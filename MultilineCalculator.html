@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multiline Calculator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+    /* Add this to the top of the style section */
+    body {
+        font-family: 'Inter', sans-serif;
+        background: #1a1a1a;
+    }
+        /* Main Container */
+        .calculator {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 30px;
+            background: #2d2d2d;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            color: #e0e0e0;
+        }
+
+        /* Input Groups */
+        .line {
+            display: grid;
+            grid-template-columns: 1fr 2fr auto;
+            gap: 15px;
+            padding: 18px;
+            margin-bottom: 15px;
+            background: #363636;
+            border-radius: 10px;
+            border: 1px solid #404040;
+        }
+
+        /* Form Elements */
+        input[type="text"] {
+            padding: 10px 15px;
+            background: #1a1a1a;
+            border: 1px solid #404040;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+
+        input[type="text"]:focus {
+            border-color: #00ff88;
+            box-shadow: 0 0 0 2px rgba(0,255,136,0.2);
+        }
+
+        /* Buttons */
+        button {
+            padding: 10px 25px;
+            background: #00ff88;
+            color: #1a1a1a;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: #00cc6a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,255,136,0.3);
+        }
+
+        /* Save List */
+        #saveList {
+            background: #1a1a1a;
+            border: 1px solid #404040;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        /* Results Display */
+        .result {
+            font-size: 18px;
+            font-weight: 600;
+            color: #00ff88;
+            min-width: 100px;
+            text-align: right;
+            background: rgba(0,255,136,0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        /* Total Display */
+        #total {
+            font-size: 28px;
+            color: #00ff88;
+            font-weight: 700;
+        }
+
+        /* Controls Container */
+        .controls-container {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #404040;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator">
+        <h1 style="color: #00ff88; margin: 0 0 30px 0; font-size: 2.5rem; text-align: center;">
+            Multiline Calculator
+        </h1>
+        <div id="lines"></div>
+        <div class="total-container">
+            <div class="total-display">
+                Total: <span id="total">0.00</span>
+            </div>
+        </div>
+        <div class="controls-container">
+            <div class="controls-group">
+                <button onclick="saveData()">Save</button>
+                <select id="saveList"></select>
+                <button onclick="loadSelectedSave()">Load</button>
+                <button onclick="deleteSave()" style="background-color: #ff4444;">Delete</button>
+                <button onclick="exportSaves()" style="background-color: #2196F3;">Export</button>
+                <input type="file" id="importFile" hidden accept=".json" onchange="importSaves(event)">
+                <button onclick="document.getElementById('importFile').click()" style="background-color: #4CAF50;">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lineCount = 0;
+        
+        function addLine() {
+            lineCount++;
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.innerHTML = `
+                <input type="text" placeholder="Line name" class="name-input" oninput="calculate()">
+                <input type="text" class="expression" placeholder="E.g. 5 + 3 * 2 - 4" oninput="calculate()">
+                <span class="result">0.00</span>
+            `;
+            document.getElementById('lines').appendChild(line);
+        }
+
+        function calculate() {
+            let currentOperator = '+'; // Add this line
+            const lines = document.querySelectorAll('.line');
+            let total = 0;
+            
+            // Always maintain at least one line
+            if (lines.length === 0) {
+                addLine();
+                return;
+            }
+
+            // Cleanup phase first (before calculations)
+            const currentLines = Array.from(document.querySelectorAll('.line'));
+            currentLines.forEach((line, index) => {
+                const isLastLine = index === currentLines.length - 1;
+                if (!isLastLine && 
+                    line.querySelector('.name-input').value.trim() === '' &&
+                    line.querySelector('.expression').value.trim() === '') {
+                    line.remove();
+                }
+            });
+
+            // Check if we need to add new line AFTER cleanup
+            const remainingLines = document.querySelectorAll('.line');
+            const lastLine = remainingLines[remainingLines.length - 1];
+            if (lastLine.querySelector('.name-input').value.trim() !== '' ||
+                lastLine.querySelector('.expression').value.trim() !== '') {
+                addLine();
+            }
+
+            // Calculation phase
+            document.querySelectorAll('.line').forEach((line) => {
+                // Parse and calculate expression
+                const expr = line.querySelector('.expression').value;
+                const tokens = expr.match(/(-?\d+\.?\d*%?)|([+\-*/])/g) || [];
+                let result = 0;
+                
+                if (tokens.length > 0) {
+                    result = parseFloat(tokens[0]) || 0;
+                    
+                    for (let i = 1; i < tokens.length; i++) {
+                        const token = tokens[i].trim();
+                        
+                        if ('+-*/'.includes(token)) {
+                            currentOperator = token;
+                        } else {
+                            let num = parseFloat(token) || 0;
+                            
+                            // Handle percentage calculations
+                            if (token.includes('%')) {
+                                num = num / 100;
+                                if (['+', '-'].includes(currentOperator)) {
+                                    num = result * num;
+                                }
+                            }
+                            
+                            switch(currentOperator) {
+                                case '+': result += num; break;
+                                case '-': result -= num; break;
+                                case '*': result *= num; break;
+                                case '/': result = num !== 0 ? result / num : 0; break;
+                            }
+                        }
+                    }
+                }
+                
+                line.querySelector('.result').textContent = result.toFixed(2);
+                total += result;
+            });
+
+            document.getElementById('total').textContent = total.toFixed(2);
+        }
+
+        function saveData() {
+            const saveName = prompt('Enter save name:', new Date().toLocaleString());
+            if (!saveName) return;
+
+            const saves = JSON.parse(localStorage.getItem('calculatorSaves') || '[]');
+            const newSave = {
+                id: Date.now(),
+                name: saveName,
+                data: Array.from(document.querySelectorAll('.line')).map(line => ({
+                    name: line.querySelector('.name-input').value,
+                    expression: line.querySelector('.expression').value
+                }))
+            };
+            
+            saves.push(newSave);
+            localStorage.setItem('calculatorSaves', JSON.stringify(saves));
+            populateSaveList();
+        }
+
+        function populateSaveList() {
+            const saves = JSON.parse(localStorage.getItem('calculatorSaves') || '[]');
+            const saveList = document.getElementById('saveList');
+            saveList.innerHTML = saves.length > 0 
+                ? saves.map(save => `<option value="${save.id}">${save.name}</option>`).join('')
+                : '<option disabled>No saves found</option>';
+        }
+
+        function loadSelectedSave() {
+            const saveId = document.getElementById('saveList').value;
+            if (!saveId) return;
+
+            const saves = JSON.parse(localStorage.getItem('calculatorSaves') || '[]');
+            const save = saves.find(s => s.id == saveId);
+            
+            // Clear current lines
+            document.getElementById('lines').innerHTML = '';
+            
+            // Add saved lines
+            save.data.forEach(item => {
+                const line = document.createElement('div');
+                line.className = 'line';
+                line.innerHTML = `
+                    <input type="text" class="name-input" 
+                        value="${item.name}" oninput="calculate()">
+                    <input type="text" class="expression" 
+                        value="${item.expression}" oninput="calculate()">
+                    <span class="result"></span>
+                `;
+                document.getElementById('lines').appendChild(line);
+            });
+            
+            calculate();
+        }
+
+        function deleteSave() {
+            const saveId = document.getElementById('saveList').value;
+            if (!saveId || !confirm('Permanently delete this save?')) return;
+
+            const saves = JSON.parse(localStorage.getItem('calculatorSaves') || '[]');
+            const filteredSaves = saves.filter(s => s.id != saveId);
+            
+            localStorage.setItem('calculatorSaves', JSON.stringify(filteredSaves));
+            populateSaveList();
+            calculate(); // Refresh the interface
+        }
+
+        function exportSaves() {
+            const saves = JSON.parse(localStorage.getItem('calculatorSaves') || '[]');
+            if (saves.length === 0) {
+                alert('No saves to export');
+                return;
+            }
+
+            const dataStr = JSON.stringify(saves, null, 2);
+            const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+            const blob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `calculator-saves-${dateStr}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importSaves(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedSaves = JSON.parse(e.target.result);
+                    if (!Array.isArray(importedSaves)) throw new Error('Invalid format');
+                    
+                    localStorage.setItem('calculatorSaves', JSON.stringify(importedSaves));
+                    populateSaveList();
+                    alert(`Successfully imported ${importedSaves.length} saves`);
+                    event.target.value = ''; // Reset input
+                } catch (error) {
+                    alert('Error importing saves: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+        // Initialize after DOM loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Clear any existing content first
+            const linesContainer = document.getElementById('lines');
+            while (linesContainer.firstChild) {
+                linesContainer.removeChild(linesContainer.firstChild);
+            }
+            
+            // Create fresh initial line
+            addLine();
+            calculate();
+            
+            // Populate saves after initial setup
+            populateSaveList();
+        });
+    </script>
+</body>
+</html>
